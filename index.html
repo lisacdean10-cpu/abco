@@ -844,13 +844,13 @@ input[type=file] { display: none; }
       <div class="card">
         <div class="card-title">AI Photo Analysis</div>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Your Anthropic API key is stored only on this device. Required for photo analysis and intake form scanning.</p>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="password" id="s-api-key" placeholder="sk-ant-…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;background:var(--bg);color:var(--text);"
-            oninput="saveSettings()">
-          <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          <textarea id="s-api-key" placeholder="sk-ant-…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" rows="2"
+            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:12px;background:var(--bg);color:var(--text);resize:none;word-break:break-all;-webkit-text-security:disc;"
+            oninput="saveSettings()" onchange="saveSettings()" onblur="saveSettings()"></textarea>
+          <button class="btn btn-ghost btn-sm" style="margin-top:2px;" onclick="toggleApiKeyVisibility()">Show</button>
         </div>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">Get a key at console.anthropic.com</p>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">Get a key at console.anthropic.com · <span id="api-key-saved" style="color:var(--forest);display:none;">Saved ✓</span></p>
       </div>
 
       <!-- Google Drive Sync (Phase 4) -->
@@ -1886,14 +1886,24 @@ function saveSettings() {
   };
   localStorage.setItem('abco_settings', JSON.stringify(settings));
   studioSettings = settings;
+  // Show saved indicator for API key
+  if (settings.apiKey) {
+    const savedEl = document.getElementById('api-key-saved');
+    if (savedEl) { savedEl.style.display = 'inline'; setTimeout(() => { savedEl.style.display = 'none'; }, 2000); }
+  }
 }
 
 function toggleApiKeyVisibility() {
   const el = document.getElementById('s-api-key');
   if (!el) return;
   const btn = el.nextElementSibling;
-  if (el.type === 'password') { el.type = 'text'; if(btn) btn.textContent = 'Hide'; }
-  else { el.type = 'password'; if(btn) btn.textContent = 'Show'; }
+  if (el.style.webkitTextSecurity === 'none') {
+    el.style.webkitTextSecurity = 'disc';
+    if (btn) btn.textContent = 'Show';
+  } else {
+    el.style.webkitTextSecurity = 'none';
+    if (btn) btn.textContent = 'Hide';
+  }
 }
 
 function toggleGoogleClientIdVisibility() {
