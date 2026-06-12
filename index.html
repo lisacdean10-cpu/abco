@@ -852,8 +852,9 @@ input[type=file] { display: none; }
             oninput="saveSettings()" onchange="saveSettings()" onblur="saveSettings()">
           <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
         </div>
-        <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="saveSettings();toast('API key saved ✓')">Save Key</button>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">Get a key at console.anthropic.com</p>
+        <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="saveApiKey()">Save Key</button>
+        <p id="api-key-preview" style="font-size:11px;color:var(--forest);margin-top:6px;font-family:monospace;display:none;"></p>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Get a key at console.anthropic.com</p>
       </div>
 
       <!-- Google Drive Sync (Phase 4) -->
@@ -1896,6 +1897,20 @@ function saveSettings() {
   }
 }
 
+function saveApiKey() {
+  const el = document.getElementById('s-api-key');
+  if (!el) return;
+  const key = el.value.trim();
+  if (!key) { toast('⚠️ No key entered'); return; }
+  studioSettings.apiKey = key;
+  saveSettings();
+  // Show first 10 + last 4 chars so user can verify
+  const preview = key.length > 14 ? key.slice(0,10) + '…' + key.slice(-4) : key;
+  const previewEl = document.getElementById('api-key-preview');
+  if (previewEl) { previewEl.textContent = 'Stored: ' + preview; previewEl.style.display = 'block'; }
+  toast('API key saved ✓');
+}
+
 function toggleApiKeyVisibility() {
   const el = document.getElementById('s-api-key');
   if (!el) return;
@@ -2191,7 +2206,12 @@ function manualSync() {
 
 function loadSettingsUI() {
   const ss = studioSettings;
-  if (ss.apiKey) { const el = document.getElementById('s-api-key'); if(el) el.value = ss.apiKey; }
+  if (ss.apiKey) {
+    const el = document.getElementById('s-api-key'); if(el) el.value = ss.apiKey;
+    const preview = ss.apiKey.length > 14 ? ss.apiKey.slice(0,10) + '…' + ss.apiKey.slice(-4) : ss.apiKey;
+    const previewEl = document.getElementById('api-key-preview');
+    if (previewEl) { previewEl.textContent = 'Stored: ' + preview; previewEl.style.display = 'block'; }
+  }
   if (ss.googleClientId) { const el = document.getElementById('s-google-client-id'); if(el) el.value = ss.googleClientId; }
   if (ss.policy) { const el = document.getElementById('s-policy'); if(el) el.value = ss.policy; }
   if (ss.closing) { const el = document.getElementById('s-closing'); if(el) el.value = ss.closing; }
