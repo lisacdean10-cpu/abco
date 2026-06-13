@@ -536,6 +536,7 @@ input[type=file] { display: none; }
           </label>
         </div>
         <div id="ai-error-box" style="display:none;background:#fdf0f0;color:var(--dark-pink);font-size:12px;padding:10px 12px;border-radius:8px;margin-top:8px;line-height:1.5;"></div>
+        <div id="api-key-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;text-align:center;"></div>
       </div>
 
       <div id="ai-section">
@@ -845,12 +846,14 @@ input[type=file] { display: none; }
       <div class="card">
         <div class="card-title">AI Photo Analysis</div>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Your Anthropic API key is stored only on this device. Required for photo analysis and intake form scanning.</p>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:flex-start;">
           <textarea id="s-api-key" placeholder="sk-ant-…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" rows="3"
-            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:12px;background:var(--bg);color:var(--text);resize:none;word-break:break-all;overflow-y:auto;"
+            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:12px;background:var(--bg);color:var(--text);resize:none;word-break:break-all;overflow-y:auto;-webkit-text-security:disc;"
             oninput="saveSettings()" onchange="saveSettings()"></textarea>
-          <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
-          <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Save</button>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+            <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Save</button>
+          </div>
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">Get a key at console.anthropic.com</p>
       </div>
@@ -1868,8 +1871,8 @@ function saveSettings() {
   const settings = {
     cipher,
     categories,
-    apiKey: document.getElementById('s-api-key')?.value || '',
-    googleClientId: document.getElementById('s-google-client-id')?.value || '',
+    apiKey: (document.getElementById('s-api-key')?.value || '').replace(/\s/g, '') || (studioSettings.apiKey || '').replace(/\s/g, '') || '',
+    googleClientId: document.getElementById('s-google-client-id')?.value.trim() || studioSettings.googleClientId || '',
     pinLength: document.getElementById('pin-length')?.value || 4,
     irsRate: document.getElementById('irs-rate')?.value || 0.67,
     policy: document.getElementById('s-policy')?.value || '',
@@ -1890,10 +1893,19 @@ function saveSettings() {
   studioSettings = settings;
 }
 
+function toggleApiKeyVisibility() {
+  const el = document.getElementById('s-api-key');
+  if (!el) return;
+  const btn = el.parentElement?.querySelector('button');
+  const hidden = el.style.webkitTextSecurity !== 'none';
+  el.style.webkitTextSecurity = hidden ? 'none' : 'disc';
+  if (btn) btn.textContent = hidden ? 'Hide' : 'Show';
+}
+
 function saveApiKey() {
   const el = document.getElementById('s-api-key');
   if (!el) return;
-  const key = el.value.trim();
+  const key = el.value.replace(/\s/g, '');
   if (!key) {
     showModal({ title: 'No Key', msg: 'Please paste your Anthropic API key first.', confirmLabel: 'OK', cancelLabel: '' });
     return;
@@ -1902,24 +1914,7 @@ function saveApiKey() {
   saveSettings();
   const saved = studioSettings.apiKey || '';
   const fromLS = JSON.parse(localStorage.getItem('abco_settings') || '{}').apiKey || '';
-  const msg = 'Key length: ' + key.length + ' chars. Starts with: ' + key.slice(0,12) + '... In memory: ' + saved.length + ' chars. In localStorage: ' + fromLS.length + ' chars.';
-  showModal({ title: 'Key Saved', msg: msg, confirmLabel: 'OK', cancelLabel: '' });
-}
-
-function toggleApiKeyVisibility() {
-  const el = document.getElementById('s-api-key');
-  if (!el) return;
-  const btn = el.nextElementSibling;
-  // textarea uses data-hidden attribute instead of type
-  if (el.dataset.hidden !== 'false') {
-    el.dataset.hidden = 'false';
-    el.style.webkitTextSecurity = 'none';
-    if(btn) btn.textContent = 'Hide';
-  } else {
-    el.dataset.hidden = 'true';
-    el.style.webkitTextSecurity = 'disc';
-    if(btn) btn.textContent = 'Show';
-  }
+  showModal({ title: 'Key Saved', msg: 'Key length: ' + key.length + ' chars. Starts with: ' + key.slice(0,12) + '... In memory: ' + saved.length + ' chars. In localStorage: ' + fromLS.length + ' chars.', confirmLabel: 'OK', cancelLabel: '' });
 }
 
 function toggleGoogleClientIdVisibility() {
@@ -1977,12 +1972,12 @@ function handleDriveTokenResponse(tokenResponse) {
 function initiateDriveAuth() {
   const clientId = getGoogleClientId();
   if (!clientId) {
-    showModal('Client ID Required', 'Paste your Google OAuth Client ID in the field above, then tap Connect.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'Client ID Required', msg: 'Paste your Google OAuth Client ID in the field above, then tap Connect.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   if (!initDriveTokenClient()) {
     // GIS script may not be loaded yet — try loading inline
-    showModal('Loading…', 'Google Identity Services is loading. Wait a moment and try again.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'Loading…', msg: 'Google Identity Services is loading. Wait a moment and try again.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   driveTokenClient.requestAccessToken({ prompt: 'consent' });
@@ -2004,8 +1999,12 @@ function isDriveConnected() {
 }
 
 function disconnectDrive() {
-  showModal('Disconnect Google Drive?', 'Sync will stop. Your data stays on this device and in Drive — nothing is deleted.', [
-    { label: 'Disconnect', style: 'danger', action: () => {
+  showModal({
+    title: 'Disconnect Google Drive?',
+    msg: 'Sync will stop. Your data stays on this device and in Drive — nothing is deleted.',
+    confirmLabel: 'Disconnect',
+    cancelLabel: 'Cancel',
+    onConfirm: () => {
       if (typeof google !== 'undefined' && google.accounts && driveAccessToken) {
         google.accounts.oauth2.revoke(driveAccessToken, () => {});
       }
@@ -2017,9 +2016,9 @@ function disconnectDrive() {
       saveSettings();
       updateDriveSyncUI();
       toast('Google Drive disconnected');
-    }},
-    { label: 'Cancel', style: 'ghost', action: () => {} }
-  ]);
+    },
+    onCancel: () => {}
+  });
 }
 
 function updateDriveSyncUI() {
@@ -2209,7 +2208,7 @@ function manualSync() {
 
 function loadSettingsUI() {
   const ss = studioSettings;
-  if (ss.apiKey) { const el = document.getElementById('s-api-key'); if(el) { el.value = ss.apiKey; el.style.webkitTextSecurity = 'disc'; el.dataset.hidden = 'true'; } }
+  if (ss.apiKey) { const el = document.getElementById('s-api-key'); if(el) { el.value = ss.apiKey; el.style.webkitTextSecurity = 'disc'; } }
   if (ss.googleClientId) { const el = document.getElementById('s-google-client-id'); if(el) el.value = ss.googleClientId; }
   if (ss.policy) { const el = document.getElementById('s-policy'); if(el) el.value = ss.policy; }
   if (ss.closing) { const el = document.getElementById('s-closing'); if(el) el.value = ss.closing; }
@@ -2453,24 +2452,26 @@ function confirmSetupPin() {
 
 // ========== SIZE FIELD IN AI ANALYSIS ==========
 function getApiKey() {
-  // Check studioSettings first, then fall back to live DOM value
-  // (guards against Drive sync overwriting studioSettings without repopulating UI)
-  const fromSettings = studioSettings.apiKey || '';
+  const fromSettings = (studioSettings.apiKey || '').replace(/\s/g, '');
   if (fromSettings) return fromSettings;
-  const fromDOM = document.getElementById('s-api-key')?.value || '';
-  if (fromDOM) {
-    // DOM has a key but studioSettings doesn't — re-save to sync them
-    studioSettings.apiKey = fromDOM;
-    saveSettings();
-  }
+  const fromDOM = (document.getElementById('s-api-key')?.value || '').replace(/\s/g, '');
+  if (fromDOM) { studioSettings.apiKey = fromDOM; saveSettings(); }
   return fromDOM;
 }
 
 async function analyzeItem() {
-  // We override the prompt injection inline below
+  // Show key status for debugging
+  const keyNow = getApiKey();
+  const statusEl = document.getElementById('api-key-status');
+  if (statusEl) {
+    statusEl.textContent = keyNow
+      ? 'Key loaded: ' + keyNow.slice(0,12) + '... (' + keyNow.length + ' chars)'
+      : 'NO KEY FOUND';
+    statusEl.style.color = keyNow ? 'var(--forest)' : 'var(--dark-pink)';
+  }
   if(!photos.length) return;
-  if(!getApiKey()) {
-    showModal('API Key Required', 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', [{label:'OK',style:'primary',action:()=>{}}]);
+  if(!keyNow) {
+    showModal({ title: 'API Key Required', msg: 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   const btn = document.getElementById('analyze-btn');
@@ -2510,15 +2511,11 @@ async function analyzeItem() {
       return { type:'image', source:{ type:'base64', media_type: 'image/jpeg', data: b64 }};
     }));
     const catList = categories.map(c=>c.code+' ('+c.name+')').join(', ');
-    const _apiKey = getApiKey();
-    console.log('[ABCo AI] Key present:', !!_apiKey, '| Key prefix:', _apiKey ? _apiKey.slice(0,12) + '...' : 'EMPTY');
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    console.log('[ABCo AI] Calling Worker, key in settings:', !!keyNow);
+    const resp = await fetch('https://abco-proxy.ldeanius.workers.dev',{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-5',
@@ -2551,10 +2548,10 @@ For size: look carefully at any visible tags. Common formats: XS S M L XL, numer
         const errDetail = errData.error?.message || '';
         if (errType === 'overloaded_error') errMsg = 'Claude is busy — wait 10 seconds and try again';
         else if (errType === 'rate_limit_error') errMsg = 'Rate limit hit — wait 30 seconds and retry';
-        else if (errType === 'invalid_request_error') errMsg = `Bad request: ${errDetail.slice(0,80)}`;
-        else if (resp.status === 401) errMsg = 'API key invalid or missing — update it in Settings → AI Photo Analysis';
+        else if (errType === 'invalid_request_error') errMsg = 'Bad request: ' + errDetail.slice(0,120);
+        else if (resp.status === 401) errMsg = '401 Auth failed. Type: ' + errType + ' | ' + errDetail.slice(0,100);
         else if (resp.status === 413) errMsg = 'Photo too large — try a lower resolution shot';
-        else errMsg = `API ${resp.status}: ${errDetail.slice(0,80)}`;
+        else errMsg = 'API ' + resp.status + ' | type: ' + errType + ' | ' + errDetail.slice(0,100);
       } catch(_) {}
       throw new Error(errMsg);
     }
@@ -4032,7 +4029,7 @@ async function importIntakeForm(input) {
   const file = input.files[0];
   if (!file) return;
   if (!getApiKey()) {
-    showModal('API Key Required', 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'API Key Required', msg: 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   toast('Reading intake form with AI…');
@@ -4044,13 +4041,10 @@ async function importIntakeForm(input) {
       r.readAsDataURL(f);
     });
     const b64 = await toB64(file);
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    const resp = await fetch('https://abco-proxy.ldeanius.workers.dev',{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'x-api-key': getApiKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-5',
@@ -4077,10 +4071,10 @@ If a field is not visible or unclear, use empty string.`}
         const errDetail = errData.error?.message || '';
         if (errType === 'overloaded_error') errMsg = 'Claude is busy — wait 10 seconds and try again';
         else if (errType === 'rate_limit_error') errMsg = 'Rate limit hit — wait 30 seconds and retry';
-        else if (errType === 'invalid_request_error') errMsg = `Bad request: ${errDetail.slice(0,80)}`;
-        else if (resp.status === 401) errMsg = 'API key invalid or missing — update it in Settings → AI Photo Analysis';
+        else if (errType === 'invalid_request_error') errMsg = 'Bad request: ' + errDetail.slice(0,120);
+        else if (resp.status === 401) errMsg = '401 Auth failed. Type: ' + errType + ' | ' + errDetail.slice(0,100);
         else if (resp.status === 413) errMsg = 'Photo too large — try a lower resolution shot';
-        else errMsg = `API ${resp.status}: ${errDetail.slice(0,80)}`;
+        else errMsg = 'API ' + resp.status + ' | type: ' + errType + ' | ' + errDetail.slice(0,100);
       } catch(_) {}
       throw new Error(errMsg);
     }
@@ -5386,21 +5380,19 @@ function renderPrintJobItems() {
 }
 
 function executePrintJob() {
-  // Confirm before committing print job
   const totalUnits = _printJobItems.reduce((s,i)=>s+(i.qty||1),0);
   const itemCount = _printJobItems.length;
-  showModal(
-    'Commit & Print?',
-    `This will send ${itemCount} item${itemCount===1?'':'s'} (${totalUnits} unit${totalUnits===1?'':'s'}) to the label printer. Continue?`,
-    [
-      { label: 'Cancel', style: 'ghost', action: () => {} },
-      { label: '\ud83d\udda8 Print', style: 'gold', action: () => _doExecutePrintJob() }
-    ]
-  );
+  showModal({
+    title: 'Commit & Print?',
+    msg: 'This will send ' + itemCount + ' item' + (itemCount===1?'':'s') + ' (' + totalUnits + ' unit' + (totalUnits===1?'':' s') + ') to the label printer. Continue?',
+    confirmLabel: 'Print',
+    cancelLabel: 'Cancel',
+    onConfirm: () => _doExecutePrintJob(),
+    onCancel: () => {}
+  });
 }
 
 async function _doExecutePrintJob() {
-  // Group items by type
   const skuItems = _printJobItems.filter(i => i._printType === 'sku' || i._printType === 'both');
   const qrItems = _printJobItems.filter(i => i._printType === 'qr' || i._printType === 'both');
 
