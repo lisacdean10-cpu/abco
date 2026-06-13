@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://api.anthropic.com https://accounts.google.com https://www.googleapis.com https://cdnjs.cloudflare.com https://abco-proxy.ldeanius.workers.dev;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -846,15 +845,16 @@ input[type=file] { display: none; }
       <div class="card">
         <div class="card-title">AI Photo Analysis</div>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Your Anthropic API key is stored only on this device. Required for photo analysis and intake form scanning.</p>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="password" id="s-api-key" placeholder="sk-ant-…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;background:var(--bg);color:var(--text);"
-            oninput="saveSettings()" onchange="saveSettings()" onblur="saveSettings()">
-          <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          <textarea id="s-api-key" placeholder="sk-ant-…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" rows="3"
+            style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:monospace;font-size:12px;background:var(--bg);color:var(--text);resize:none;word-break:break-all;overflow-y:auto;-webkit-text-security:disc;"
+            oninput="saveSettings()" onchange="saveSettings()"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+            <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Save</button>
+          </div>
         </div>
-        <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="saveApiKey()">Save Key</button>
-        <p id="api-key-preview" style="font-size:11px;color:var(--forest);margin-top:6px;font-family:monospace;display:none;word-break:break-all;"></p>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Get a key at console.anthropic.com</p>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">Get a key at console.anthropic.com</p>
       </div>
 
       <!-- Google Drive Sync (Phase 4) -->
@@ -1870,8 +1870,8 @@ function saveSettings() {
   const settings = {
     cipher,
     categories,
-    apiKey: document.getElementById('s-api-key')?.value || '',
-    googleClientId: document.getElementById('s-google-client-id')?.value || '',
+    apiKey: document.getElementById('s-api-key')?.value.trim() || studioSettings.apiKey || '',
+    googleClientId: document.getElementById('s-google-client-id')?.value.trim() || studioSettings.googleClientId || '',
     pinLength: document.getElementById('pin-length')?.value || 4,
     irsRate: document.getElementById('irs-rate')?.value || 0.67,
     policy: document.getElementById('s-policy')?.value || '',
@@ -1890,33 +1890,30 @@ function saveSettings() {
   };
   localStorage.setItem('abco_settings', JSON.stringify(settings));
   studioSettings = settings;
-  // Show saved indicator for API key
-  if (settings.apiKey) {
-    const savedEl = document.getElementById('api-key-saved');
-    if (savedEl) { savedEl.style.display = 'inline'; setTimeout(() => { savedEl.style.display = 'none'; }, 2000); }
-  }
+}
+
+function toggleApiKeyVisibility() {
+  const el = document.getElementById('s-api-key');
+  if (!el) return;
+  const btn = el.parentElement?.querySelector('button');
+  const hidden = el.style.webkitTextSecurity !== 'none';
+  el.style.webkitTextSecurity = hidden ? 'none' : 'disc';
+  if (btn) btn.textContent = hidden ? 'Hide' : 'Show';
 }
 
 function saveApiKey() {
   const el = document.getElementById('s-api-key');
   if (!el) return;
   const key = el.value.trim();
-  if (!key) { toast('⚠️ No key entered'); return; }
+  if (!key) {
+    showModal({ title: 'No Key', msg: 'Please paste your Anthropic API key first.', confirmLabel: 'OK', cancelLabel: '' });
+    return;
+  }
   studioSettings.apiKey = key;
   saveSettings();
-  // Show first 10 + last 4 chars so user can verify
-  const preview = key.length > 14 ? key.slice(0,10) + '…' + key.slice(-4) : key;
-  const previewEl = document.getElementById('api-key-preview');
-  if (previewEl) { previewEl.textContent = 'Stored: ' + preview; previewEl.style.display = 'block'; }
-  toast('API key saved ✓');
-}
-
-function toggleApiKeyVisibility() {
-  const el = document.getElementById('s-api-key');
-  if (!el) return;
-  const btn = el.nextElementSibling;
-  if (el.type === 'password') { el.type = 'text'; if(btn) btn.textContent = 'Hide'; }
-  else { el.type = 'password'; if(btn) btn.textContent = 'Show'; }
+  const saved = studioSettings.apiKey || '';
+  const fromLS = JSON.parse(localStorage.getItem('abco_settings') || '{}').apiKey || '';
+  showModal({ title: 'Key Saved', msg: 'Key length: ' + key.length + ' chars. Starts with: ' + key.slice(0,12) + '... In memory: ' + saved.length + ' chars. In localStorage: ' + fromLS.length + ' chars.', confirmLabel: 'OK', cancelLabel: '' });
 }
 
 function toggleGoogleClientIdVisibility() {
@@ -1974,12 +1971,12 @@ function handleDriveTokenResponse(tokenResponse) {
 function initiateDriveAuth() {
   const clientId = getGoogleClientId();
   if (!clientId) {
-    showModal('Client ID Required', 'Paste your Google OAuth Client ID in the field above, then tap Connect.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'Client ID Required', msg: 'Paste your Google OAuth Client ID in the field above, then tap Connect.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   if (!initDriveTokenClient()) {
     // GIS script may not be loaded yet — try loading inline
-    showModal('Loading…', 'Google Identity Services is loading. Wait a moment and try again.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'Loading…', msg: 'Google Identity Services is loading. Wait a moment and try again.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   driveTokenClient.requestAccessToken({ prompt: 'consent' });
@@ -2001,8 +1998,12 @@ function isDriveConnected() {
 }
 
 function disconnectDrive() {
-  showModal('Disconnect Google Drive?', 'Sync will stop. Your data stays on this device and in Drive — nothing is deleted.', [
-    { label: 'Disconnect', style: 'danger', action: () => {
+  showModal({
+    title: 'Disconnect Google Drive?',
+    msg: 'Sync will stop. Your data stays on this device and in Drive — nothing is deleted.',
+    confirmLabel: 'Disconnect',
+    cancelLabel: 'Cancel',
+    onConfirm: () => {
       if (typeof google !== 'undefined' && google.accounts && driveAccessToken) {
         google.accounts.oauth2.revoke(driveAccessToken, () => {});
       }
@@ -2014,9 +2015,9 @@ function disconnectDrive() {
       saveSettings();
       updateDriveSyncUI();
       toast('Google Drive disconnected');
-    }},
-    { label: 'Cancel', style: 'ghost', action: () => {} }
-  ]);
+    },
+    onCancel: () => {}
+  });
 }
 
 function updateDriveSyncUI() {
@@ -2206,12 +2207,7 @@ function manualSync() {
 
 function loadSettingsUI() {
   const ss = studioSettings;
-  if (ss.apiKey) {
-    const el = document.getElementById('s-api-key'); if(el) el.value = ss.apiKey;
-    const preview = ss.apiKey.length > 14 ? ss.apiKey.slice(0,10) + '…' + ss.apiKey.slice(-4) : ss.apiKey;
-    const previewEl = document.getElementById('api-key-preview');
-    if (previewEl) { previewEl.textContent = 'Stored: ' + preview; previewEl.style.display = 'block'; }
-  }
+  if (ss.apiKey) { const el = document.getElementById('s-api-key'); if(el) { el.value = ss.apiKey; el.style.webkitTextSecurity = 'disc'; } }
   if (ss.googleClientId) { const el = document.getElementById('s-google-client-id'); if(el) el.value = ss.googleClientId; }
   if (ss.policy) { const el = document.getElementById('s-policy'); if(el) el.value = ss.policy; }
   if (ss.closing) { const el = document.getElementById('s-closing'); if(el) el.value = ss.closing; }
@@ -2455,14 +2451,18 @@ function confirmSetupPin() {
 
 // ========== SIZE FIELD IN AI ANALYSIS ==========
 function getApiKey() {
-  return studioSettings.apiKey || '';
+  const fromSettings = studioSettings.apiKey || '';
+  if (fromSettings) return fromSettings;
+  const fromDOM = document.getElementById('s-api-key')?.value || '';
+  if (fromDOM) { studioSettings.apiKey = fromDOM; saveSettings(); }
+  return fromDOM;
 }
 
 async function analyzeItem() {
   // We override the prompt injection inline below
   if(!photos.length) return;
   if(!getApiKey()) {
-    showModal('API Key Required', 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'API Key Required', msg: 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   const btn = document.getElementById('analyze-btn');
@@ -2502,10 +2502,15 @@ async function analyzeItem() {
       return { type:'image', source:{ type:'base64', media_type: 'image/jpeg', data: b64 }};
     }));
     const catList = categories.map(c=>c.code+' ('+c.name+')').join(', ');
-    const resp = await fetch('https://abco-proxy.ldeanius.workers.dev',{
+    const _apiKey = getApiKey();
+    console.log('[ABCo AI] Key present:', !!_apiKey, '| prefix:', _apiKey ? _apiKey.slice(0,12)+'...' : 'EMPTY');
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
-        'Content-Type':'application/json'
+        'Content-Type':'application/json',
+        'x-api-key': _apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-5',
@@ -4019,7 +4024,7 @@ async function importIntakeForm(input) {
   const file = input.files[0];
   if (!file) return;
   if (!getApiKey()) {
-    showModal('API Key Required', 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', [{label:'OK',style:'primary',action:()=>{}}]);
+    showModal({ title: 'API Key Required', msg: 'Add your Anthropic API key in Settings → AI Photo Analysis before using this feature.', confirmLabel: 'OK', cancelLabel: '' });
     return;
   }
   toast('Reading intake form with AI…');
@@ -4031,10 +4036,13 @@ async function importIntakeForm(input) {
       r.readAsDataURL(f);
     });
     const b64 = await toB64(file);
-    const resp = await fetch('https://abco-proxy.ldeanius.workers.dev',{
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
-        'Content-Type':'application/json'
+        'Content-Type':'application/json',
+        'x-api-key': getApiKey(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-5',
@@ -5369,8 +5377,20 @@ function renderPrintJobItems() {
   }).join('');
 }
 
-async function executePrintJob() {
-  // Group items by type
+function executePrintJob() {
+  const totalUnits = _printJobItems.reduce((s,i)=>s+(i.qty||1),0);
+  const itemCount = _printJobItems.length;
+  showModal({
+    title: 'Commit & Print?',
+    msg: 'This will send ' + itemCount + ' item' + (itemCount===1?'':'s') + ' (' + totalUnits + ' unit' + (totalUnits===1?'':' s') + ') to the label printer. Continue?',
+    confirmLabel: 'Print',
+    cancelLabel: 'Cancel',
+    onConfirm: () => _doExecutePrintJob(),
+    onCancel: () => {}
+  });
+}
+
+async function _doExecutePrintJob() {
   const skuItems = _printJobItems.filter(i => i._printType === 'sku' || i._printType === 'both');
   const qrItems = _printJobItems.filter(i => i._printType === 'qr' || i._printType === 'both');
 
