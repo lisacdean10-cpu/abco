@@ -1894,14 +1894,16 @@ function saveApiKey() {
   const el = document.getElementById('s-api-key');
   if (!el) return;
   const key = el.value.trim();
-  if (!key) { showModal('No Key', 'Please paste your Anthropic API key first.', [{label:'OK',style:'primary',action:()=>{}}]); return; }
+  if (!key) {
+    showModal({ title: 'No Key', msg: 'Please paste your Anthropic API key first.', confirmLabel: 'OK', cancelLabel: '' });
+    return;
+  }
   studioSettings.apiKey = key;
   saveSettings();
-  // Verify it actually saved
   const saved = studioSettings.apiKey || '';
   const fromLS = JSON.parse(localStorage.getItem('abco_settings') || '{}').apiKey || '';
   const msg = 'Key length: ' + key.length + ' chars. Starts with: ' + key.slice(0,12) + '... In memory: ' + saved.length + ' chars. In localStorage: ' + fromLS.length + ' chars.';
-  showModal('Key Saved', msg, [{label:'OK',style:'primary',action:()=>{}}]);
+  showModal({ title: 'Key Saved', msg: msg, confirmLabel: 'OK', cancelLabel: '' });
 }
 
 function toggleApiKeyVisibility() {
