@@ -3555,10 +3555,11 @@ function buildCoachingNotesCard(idx, c) {
         var delBtn = currentRole === 'admin'
           ? '<button onclick="deleteCoachingNote(' + idx + ',' + realIdx + ')" style="background:none;border:none;color:var(--dark-pink);font-size:10px;cursor:pointer;padding:0;margin-left:4px;" title="Delete">&#x2715;</button>'
           : '';
+        var readOneBtn = '<button onclick="readSingleNote(' + JSON.stringify(n.text).replace(/"/g, "&quot;") + ')" ontouchstart="" style="background:none;border:none;color:var(--forest);font-size:11px;cursor:pointer;padding:0 0 0 6px;" title="Read this note aloud">&#9654;</button>';
         return '<tr style="border-bottom:0.5px solid var(--border);">'
           + '<td style="padding:8px 6px 8px 0;font-size:11px;color:var(--text-muted);white-space:nowrap;vertical-align:top;">' + sessionDate + '</td>'
           + '<td style="padding:8px 8px;font-size:11px;font-weight:600;color:var(--forest);vertical-align:top;" title="' + coachName + '">' + initials + '</td>'
-          + '<td style="padding:8px 0;font-size:13px;color:var(--text);line-height:1.5;white-space:pre-wrap;vertical-align:top;">' + n.text + delBtn + '</td>'
+          + '<td style="padding:8px 0;font-size:13px;color:var(--text);line-height:1.5;white-space:pre-wrap;vertical-align:top;">' + n.text + readOneBtn + delBtn + '</td>'
           + '</tr>';
       }).join('')
     : '<tr><td colspan="3" style="padding:12px 0;font-size:12px;color:var(--text-muted);">No notes yet.</td></tr>';
@@ -3727,6 +3728,18 @@ function viewCustomer(idx) {
 
     <div class="card">
       <div class="card-title">Edit Profile</div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">Full Name</label>
+        <input type="text" id="ep-name" value="${c.name||''}" style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:Glacial,sans-serif;font-size:13px;background:var(--bg);margin-top:2px;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">Client Type</label>
+        <select id="ep-client-type" style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:Glacial,sans-serif;font-size:13px;background:var(--bg);margin-top:2px;">
+          <option value="shopper" ${c.clientType==='shopper'?'selected':''}>Boutique Shopper</option>
+          <option value="coaching" ${c.clientType==='coaching'?'selected':''}>Coaching Client</option>
+          <option value="both" ${c.clientType==='both'?'selected':''}>Coaching + Shopper</option>
+        </select>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
         <div><label style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">Phone</label>
           <input type="tel" id="ep-phone" value="${c.phone||''}" style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:8px;font-family:Glacial,sans-serif;font-size:13px;background:var(--bg);margin-top:2px;"></div>
@@ -3801,6 +3814,10 @@ function issueCredit(idx) {
 
 function saveEditProfile(idx) {
   const c = customers[idx];
+  const newName = document.getElementById('ep-name')?.value.trim();
+  if (newName) c.name = newName;
+  const newType = document.getElementById('ep-client-type')?.value;
+  if (newType) c.clientType = newType;
   c.phone   = document.getElementById('ep-phone')?.value || c.phone;
   c.email   = document.getElementById('ep-email')?.value || c.email;
   c.top     = document.getElementById('ep-top')?.value || '';
@@ -4788,6 +4805,14 @@ function renderCoachingList() {
   const list = document.getElementById('coaching-client-list');
   if (!list) return;
 
+  // Defensive: reload customers from localStorage if array appears empty
+  if (!customers.length) {
+    try {
+      const raw = localStorage.getItem('abco_customers');
+      if (raw) customers = JSON.parse(raw);
+    } catch(e) {}
+  }
+
   // Coach sees only clients assigned to them; Admin sees all coaching clients
   const coachingClients = customers.filter(c =>
     c.clientType === 'coaching' || c.clientType === 'both'
@@ -5007,6 +5032,17 @@ function toggleVoiceNote(idx) {
   };
   _coachingRecognition.start();
   toast('Listening… tap 🔴 to stop');
+}
+
+function readSingleNote(text) {
+  if (!window.speechSynthesis) { toast('Text-to-speech not supported'); return; }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.92;
+  utterance.lang = 'en-US';
+  utterance.onend = () => { toast('Done'); };
+  window.speechSynthesis.speak(utterance);
+  toast('Reading note…');
 }
 
 function readNotesAloud(idx) {
