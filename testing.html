@@ -961,7 +961,7 @@ const SECTIONS = [
         name: 'No native confirm/alert/prompt calls (silently blocked in PWA)',
         run() {
           // We can verify our test environment is also safe
-          const isSafariPWA = window.navigator.standalone === true;
+          const isSafariPWA = (window.navigator && window.navigator.standalone) === true;
           return pass(`Environment: ${isSafariPWA ? 'iOS PWA (home screen)' : 'Browser (not PWA)'} — custom modal pattern required in app ✓`);
         }
       },
@@ -1089,4 +1089,475 @@ const SECTIONS = [
           const missing = expected.filter(k => ss[k] === undefined);
           return missing.length === 0
             ? pass('Settings has all expected keys ✓')
-            : warn(`Settings missing: ${missing.join(', ')} — open app to initialize`);\n        }\n      },\n    ]\n  },\n  // ─────────────────────────────────────────────\n  // PHASE 4 — GOOGLE DRIVE SYNC\n  // ─────────────────────────────────────────────\n  {\n    id: 'phase4_drive',\n    label: '☁️ Phase 4 — Google Drive Sync',\n    tests: [\n      {\n        name: 'studioSettings persists driveFileId and driveLastSync keys',\n        run: () => {\n          const ss = safeGet('abco_settings');\n          if (!ss) return warn('No settings found — open app first');\n          // These keys should exist (may be empty string on fresh install)\n          const hasFileId = 'driveFileId' in ss;\n          const hasLastSync = 'driveLastSync' in ss;\n          if (hasFileId && hasLastSync) return pass('Drive state keys present in settings ✓');\n          return warn('Drive keys not yet in settings — connect Drive or re-save settings in app');\n        }\n      },\n      {\n        name: 'studioSettings has googleClientId key (may be empty)',\n        run: () => {\n          const ss = safeGet('abco_settings');\n          if (!ss) return warn('No settings — open app first');\n          if ('googleClientId' in ss) return pass('googleClientId key present ✓');\n          return fail('googleClientId missing from settings — Phase 4 not applied');\n        }\n      },\n      {\n        name: 'API keys stay device-local (not in Drive payload shape)',\n        run: () => {\n          // Verify that the Drive payload builder structure excludes apiKey\n          // We validate this by checking settings has apiKey but confirming\n          // the spec: Drive payload only includes inventory/queue/customers/trips/sellers/discountLibrary/partners\n          const ss = safeGet('abco_settings');\n          if (!ss) return warn('No settings — open app first');\n          // apiKey SHOULD be in settings (device-local) — that is correct\n          if (ss.apiKey !== undefined) return pass('apiKey is device-local in settings (not synced to Drive) ✓');\n          return warn('apiKey not found in settings — add it in Settings → AI Photo Analysis');\n        }\n      },\n      {\n        name: 'buildDrivePayload shape: version=4, required data keys present',\n        run: () => {\n          // Simulate payload shape check without actual network call\n          const required = ['inventory','queue','customers','trips','sellers','discountLibrary','partners'];\n          // We validate by checking localStorage has the source arrays\n          const keys = {\n            inventory: safeGet('abco_inventory'),\n            queue: safeGet('abco_queue'),\n            customers: safeGet('abco_customers'),\n            trips: safeGet('abco_trips'),\n            sellers: safeGet('abco_seller_pins'),\n            discountLibrary: safeGet('abco_discounts'),\n            partners: safeGet('abco_partners'),\n          };\n          const missing = required.filter(k => keys[k] === null);\n          if (missing.length === 0) return pass('All Drive payload sources present in localStorage ✓');\n          return warn(`Drive payload sources missing: ${missing.join(', ')} — open app to initialize`);\n        }\n      },\n      {\n        name: 'applyDrivePayload: Drive data would overwrite local arrays correctly',\n        run: () => {\n          // Test that a simulated Drive payload with synthetic data would apply correctly\n          const syntheticPayload = {\n            version: 4,\n            updatedAt: new Date().toISOString(),\n            inventory: [{ sku: 'TEST-DRIVE-1', _test: true, status: 'active', description: 'Drive sync test item' }],\n            queue: [],\n            customers: [],\n            trips: [],\n            sellers: [],\n            discountLibrary: [],\n            partners: [],\n          };\n          // Validate payload shape\n          if (!syntheticPayload.version || !syntheticPayload.inventory) return fail('Payload shape invalid');\n          if (!Array.isArray(syntheticPayload.inventory)) return fail('inventory not array in payload');\n          if (syntheticPayload.inventory[0]._test !== true) return fail('Test flag not set');\n          return pass('Drive payload shape valid — applyDrivePayload would merge correctly ✓');\n        }\n      },\n      {\n        name: 'Drive disconnect clears driveAccessToken in settings',\n        run: () => {\n          const ss = safeGet('abco_settings');\n          if (!ss) return warn('No settings — open app first');\n          // If driveAccessToken is empty string or undefined, that is the correct\n          // state when not connected (could be '' or missing)\n          const token = ss.driveAccessToken;\n          if (!token) return pass('driveAccessToken is empty/absent (correct when not connected) ✓');\n          // If a token exists, check it hasn't expired\n          const expiry = ss.driveTokenExpiry || 0;\n          if (Date.now() < expiry) return pass(`Drive token present and not expired — connected ✓`);\n          return warn('driveAccessToken present but may be expired — reconnect Drive in Settings');\n        }\n      },\n      {\n        name: 'Settings tab renders Google Drive Sync card (DOM check)',\n        run: () => {\n          // This test runs in the regression runner context, not in the app\n          // We validate by checking the HTML source of the app file is not needed here —\n          // instead we confirm the settings localStorage has the Phase 4 keys\n          const ss = safeGet('abco_settings');\n          if (!ss) return warn('No settings — open app first');\n          const p4keys = ['googleClientId','driveFileId','driveLastSync'];\n          const found = p4keys.filter(k => k in ss);\n          if (found.length === p4keys.length) return pass('All Phase 4 settings keys present ✓');\n          if (found.length > 0) return warn(`Partial Phase 4 keys: ${found.join(', ')} — save settings in app to persist all`);\n          return warn('No Phase 4 keys yet — open Settings tab in app first');\n        }\n      },\n      {\n        name: 'Existing Phase 1-3 data survives Drive payload apply (non-destructive check)',\n        run: () => {\n          const inv = safeGet('abco_inventory');\n          const customers = safeGet('abco_customers');\n          if (!inv) return warn('No inventory — add items first');\n          const realItems = inv.filter(i => !i._test);\n          if (realItems.length === 0) return warn('No real inventory items found');\n          // Verify items have expected Phase 1-3 fields\n          const sample = realItems[0];\n          const hasCore = sample.sku && sample.status;\n          if (hasCore) return pass(`${realItems.length} real items have core fields — Drive apply would preserve them ✓`);\n          return fail('Real items missing sku or status fields — data integrity concern');\n        }\n      },\n    ]\n  },\n  {\n    id: 'phase5_coaching',\n    label: '\U0001F33F Phase 5 — Coaching Notes',\n    tests: [\n      {\n        name: 'Coaching clients identifiable',\n        run() {\n          const custs = safeGet('abco_customers') || [];\n          const coaching = custs.filter(c => c.clientType === 'coaching' || c.clientType === 'both');\n          if (custs.length === 0) return warn('No customers yet');\n          if (coaching.length > 0) return pass(coaching.length + ' coaching client(s) ✓');\n          return warn('No coaching clients yet');\n        }\n      },\n      {\n        name: 'coachingNotes structure valid',\n        run() {\n          const custs = safeGet('abco_customers') || [];\n          const wn = custs.filter(c => Array.isArray(c.coachingNotes) && c.coachingNotes.length > 0);\n          if (wn.length === 0) return warn('No coaching notes yet');\n          const bad = wn.flatMap(c => c.coachingNotes).find(n => !n.text || !n.date);\n          if (bad) return fail('Note missing text or date');\n          return pass(wn.length + ' client(s) have valid notes ✓');\n        }\n      },\n      {\n        name: 'No session audio files stored in localStorage (read-aloud uses Web Speech, no storage)',\n        run() {\n          const custs = safeGet('abco_customers') || [];\n          const withAudio = custs.filter(c => c.sessionAudioData || c.sessionAudioName);\n          if (withAudio.length > 0) return warn(withAudio.length + ' client(s) still have legacy audio data — harmless but can be cleared by re-saving client');\n          return pass('No audio files in localStorage — read-aloud uses Web Speech API ✓');\n        }\n      },\n      {\n        name: 'Coaching notes exist for read-aloud to function on at least one client',\n        run() {\n          const custs = safeGet('abco_customers') || [];\n          const coaching = custs.filter(c => c.clientType === 'coaching' || c.clientType === 'both');\n          if (coaching.length === 0) return warn('No coaching clients yet — add one to test read-aloud');\n          const withNotes = coaching.filter(c => c.coachingNotes && c.coachingNotes.length > 0);\n          if (withNotes.length === 0) return warn('Coaching clients exist but have no notes yet — ▶ Read Notes Aloud requires at least one note');\n          return pass(withNotes.length + ' coaching client(s) have notes — read-aloud ready ✓');\n        }\n      },\n    ]\n  },\n  {\n    id: 'phase5_story',\n    label: '\U0001F4D6 Phase 5 — Story Cards',\n    tests: [\n      {\n        name: 'storyText present on items that have it',\n        run() {\n          const inv = safeGet('abco_inventory') || [];\n          const ws = inv.filter(i => i.storyText && i.storyText.trim());\n          if (inv.length === 0) return warn('No inventory yet');\n          if (ws.length > 0) return pass(ws.length + ' item(s) have story text ✓');\n          return warn('No story text yet—edit an item to add');\n        }\n      },\n      {\n        name: 'storyText within printable length (under 1000 chars)',\n        run() {\n          const inv = safeGet('abco_inventory') || [];\n          const tl = inv.filter(i => i.storyText && i.storyText.length > 1000);\n          if (tl.length > 0) return warn(tl.length + ' item(s) story text over 1000 chars');\n          return pass('All story texts within printable length ✓');\n        }\n      },\n    ]\n  },\n  {\n    id: 'phase5_access',\n    label: '\U0001F510 Phase 5 — Access Toggles',\n    tests: [\n      {\n        name: 'Staff records have access object',\n        run() {\n          const sels = safeGet('abco_seller_pins') || [];\n          if (sels.length === 0) return warn('No staff yet—add in Settings');\n          const wa = sels.filter(s => s.access && typeof s.access === 'object');\n          const leg = sels.length - wa.length;\n          if (leg > 0) return warn(leg + ' legacy seller(s) without access object');\n          return pass('All ' + sels.length + ' staff have access objects ✓');\n        }\n      },\n      {\n        name: 'Coach role: sell and coaching access enabled',\n        run() {\n          const sels = safeGet('abco_seller_pins') || [];\n          const coaches = sels.filter(s => s.role === 'coach' && s.access);\n          if (coaches.length === 0) return warn('No coach staff yet');\n          const bad = coaches.find(c => !c.access.sell || !c.access.coaching);\n          if (bad) return warn('Coach missing sell or coaching access');\n          return pass(coaches.length + ' coach(es) have POS+Coaching ✓');\n        }\n      },\n      {\n        name: 'No admin role in sellers list',\n        run() {\n          const sels = safeGet('abco_seller_pins') || [];\n          const adm = sels.filter(s => s.role === 'admin');\n          if (adm.length > 0) return warn(adm.length + ' seller(s) with admin role');\n          return pass('No admin role in sellers list ✓');\n        }\n      },\n    ]\n  },\n  {\n    id: 'phase5_new_features',\n    label: '\U0001F4CB Phase 5 \u2014 Session Log & Story Settings',\n    tests: [\n      {\n        name: 'Coaching notes have sessionDate field',\n        run() {\n          const custs = safeGet('abco_customers') || [];\n          const allNotes = custs.flatMap(c => c.coachingNotes || []);\n          if (allNotes.length === 0) return warn('No coaching notes yet \u2014 add a note to verify sessionDate');\n          const withDate = allNotes.filter(n => n.sessionDate);\n          const legacy = allNotes.length - withDate.length;\n          if (legacy > 0) return warn(legacy + ' legacy note(s) without sessionDate \u2014 new notes will have it');\n          return pass('All ' + allNotes.length + ' note(s) have sessionDate \u2713');\n        }\n      },\n      {\n        name: 'Story Card label size setting present (storyLabelSizeIdx)',\n        run() {\n          const ss = safeGet('abco_settings') || {};\n          if ('storyLabelSizeIdx' in ss) return pass('storyLabelSizeIdx set to ' + ss.storyLabelSizeIdx + ' \u2713');\n          return warn('storyLabelSizeIdx not set yet \u2014 open Settings \u2192 Label Sizes');\n        }\n      },\n      {\n        name: 'Logo size setting present (storyLogoSizeIdx)',\n        run() {\n          const ss = safeGet('abco_settings') || {};\n          if ('storyLogoSizeIdx' in ss) return pass('storyLogoSizeIdx set to ' + ss.storyLogoSizeIdx + ' \u2713');\n          return warn('storyLogoSizeIdx not set yet \u2014 open Settings \u2192 Label Sizes');\n        }\n      },\n      {\n        name: 'AI description char limit configured (aiDescLimit)',\n        run() {\n          const ss = safeGet('abco_settings') || {};\n          if (ss.aiDescLimit && ss.aiDescLimit >= 100) return pass('aiDescLimit = ' + ss.aiDescLimit + ' chars \u2713');\n          return warn('aiDescLimit not yet set \u2014 open Settings \u2192 AI Photo Analysis');\n        }\n      },\n      {\n        name: 'No story text exceeds its configured AI limit',\n        run() {\n          const ss = safeGet('abco_settings') || {};\n          const limit = ss.aiDescLimit || 420;\n          const inv = safeGet('abco_inventory') || [];\n          const over = inv.filter(i => i.storyText && i.storyText.length > limit);\n          if (over.length > 0) return warn(over.length + ' item(s) story text over limit (' + limit + ' chars) \u2014 may truncate on label');\n          return pass('All story texts within configured limit (' + limit + ' chars) \u2713');\n        }\n      },\n    ]\n  },\n];
+            : warn(`Settings missing: ${missing.join(', ')} — open app to initialize`);
+        }
+      },
+    ]
+  },
+  // ─────────────────────────────────────────────
+  // PHASE 4 — GOOGLE DRIVE SYNC
+  // ─────────────────────────────────────────────
+  {
+    id: 'phase4_drive',
+    label: '☁️ Phase 4 — Google Drive Sync',
+    tests: [
+      {
+        name: 'studioSettings persists driveFileId and driveLastSync keys',
+        run: () => {
+          const ss = safeGet('abco_settings');
+          if (!ss) return warn('No settings found — open app first');
+          // These keys should exist (may be empty string on fresh install)
+          const hasFileId = 'driveFileId' in ss;
+          const hasLastSync = 'driveLastSync' in ss;
+          if (hasFileId && hasLastSync) return pass('Drive state keys present in settings ✓');
+          return warn('Drive keys not yet in settings — connect Drive or re-save settings in app');
+        }
+      },
+      {
+        name: 'studioSettings has googleClientId key (may be empty)',
+        run: () => {
+          const ss = safeGet('abco_settings');
+          if (!ss) return warn('No settings — open app first');
+          if ('googleClientId' in ss) return pass('googleClientId key present ✓');
+          return fail('googleClientId missing from settings — Phase 4 not applied');
+        }
+      },
+      {
+        name: 'API keys stay device-local (not in Drive payload shape)',
+        run: () => {
+          // Verify that the Drive payload builder structure excludes apiKey
+          // We validate this by checking settings has apiKey but confirming
+          // the spec: Drive payload only includes inventory/queue/customers/trips/sellers/discountLibrary/partners
+          const ss = safeGet('abco_settings');
+          if (!ss) return warn('No settings — open app first');
+          // apiKey SHOULD be in settings (device-local) — that is correct
+          if (ss.apiKey !== undefined) return pass('apiKey is device-local in settings (not synced to Drive) ✓');
+          return warn('apiKey not found in settings — add it in Settings → AI Photo Analysis');
+        }
+      },
+      {
+        name: 'buildDrivePayload shape: version=4, required data keys present',
+        run: () => {
+          // Simulate payload shape check without actual network call
+          const required = ['inventory','queue','customers','trips','sellers','discountLibrary','partners'];
+          // We validate by checking localStorage has the source arrays
+          const keys = {
+            inventory: safeGet('abco_inventory'),
+            queue: safeGet('abco_queue'),
+            customers: safeGet('abco_customers'),
+            trips: safeGet('abco_trips'),
+            sellers: safeGet('abco_seller_pins'),
+            discountLibrary: safeGet('abco_discounts'),
+            partners: safeGet('abco_partners'),
+          };
+          const missing = required.filter(k => keys[k] === null);
+          if (missing.length === 0) return pass('All Drive payload sources present in localStorage ✓');
+          return warn(`Drive payload sources missing: ${missing.join(', ')} — open app to initialize`);
+        }
+      },
+      {
+        name: 'applyDrivePayload: Drive data would overwrite local arrays correctly',
+        run: () => {
+          // Test that a simulated Drive payload with synthetic data would apply correctly
+          const syntheticPayload = {
+            version: 4,
+            updatedAt: new Date().toISOString(),
+            inventory: [{ sku: 'TEST-DRIVE-1', _test: true, status: 'active', description: 'Drive sync test item' }],
+            queue: [],
+            customers: [],
+            trips: [],
+            sellers: [],
+            discountLibrary: [],
+            partners: [],
+          };
+          // Validate payload shape
+          if (!syntheticPayload.version || !syntheticPayload.inventory) return fail('Payload shape invalid');
+          if (!Array.isArray(syntheticPayload.inventory)) return fail('inventory not array in payload');
+          if (syntheticPayload.inventory[0]._test !== true) return fail('Test flag not set');
+          return pass('Drive payload shape valid — applyDrivePayload would merge correctly ✓');
+        }
+      },
+      {
+        name: 'Drive disconnect clears driveAccessToken in settings',
+        run: () => {
+          const ss = safeGet('abco_settings');
+          if (!ss) return warn('No settings — open app first');
+          // If driveAccessToken is empty string or undefined, that is the correct
+          // state when not connected (could be '' or missing)
+          const token = ss.driveAccessToken;
+          if (!token) return pass('driveAccessToken is empty/absent (correct when not connected) ✓');
+          // If a token exists, check it hasn't expired
+          const expiry = ss.driveTokenExpiry || 0;
+          if (Date.now() < expiry) return pass(`Drive token present and not expired — connected ✓`);
+          return warn('driveAccessToken present but may be expired — reconnect Drive in Settings');
+        }
+      },
+      {
+        name: 'Settings tab renders Google Drive Sync card (DOM check)',
+        run: () => {
+          // This test runs in the regression runner context, not in the app
+          // We validate by checking the HTML source of the app file is not needed here —
+          // instead we confirm the settings localStorage has the Phase 4 keys
+          const ss = safeGet('abco_settings');
+          if (!ss) return warn('No settings — open app first');
+          const p4keys = ['googleClientId','driveFileId','driveLastSync'];
+          const found = p4keys.filter(k => k in ss);
+          if (found.length === p4keys.length) return pass('All Phase 4 settings keys present ✓');
+          if (found.length > 0) return warn(`Partial Phase 4 keys: ${found.join(', ')} — save settings in app to persist all`);
+          return warn('No Phase 4 keys yet — open Settings tab in app first');
+        }
+      },
+      {
+        name: 'Existing Phase 1-3 data survives Drive payload apply (non-destructive check)',
+        run: () => {
+          const inv = safeGet('abco_inventory');
+          const customers = safeGet('abco_customers');
+          if (!inv) return warn('No inventory — add items first');
+          const realItems = inv.filter(i => !i._test);
+          if (realItems.length === 0) return warn('No real inventory items found');
+          // Verify items have expected Phase 1-3 fields
+          const sample = realItems[0];
+          const hasCore = sample.sku && sample.status;
+          if (hasCore) return pass(`${realItems.length} real items have core fields — Drive apply would preserve them ✓`);
+          return fail('Real items missing sku or status fields — data integrity concern');
+        }
+      },
+    ]
+  },
+  {
+    id: 'phase5_coaching',
+    label: '🌿 Phase 5 — Coaching Notes',
+    tests: [
+      {
+        name: 'Coaching clients identifiable',
+        run() {
+          const custs = safeGet('abco_customers') || [];
+          const coaching = custs.filter(c => c.clientType === 'coaching' || c.clientType === 'both');
+          if (custs.length === 0) return warn('No customers yet');
+          if (coaching.length > 0) return pass(coaching.length + ' coaching client(s) ✓');
+          return warn('No coaching clients yet');
+        }
+      },
+      {
+        name: 'coachingNotes structure valid',
+        run() {
+          const custs = safeGet('abco_customers') || [];
+          const wn = custs.filter(c => Array.isArray(c.coachingNotes) && c.coachingNotes.length > 0);
+          if (wn.length === 0) return warn('No coaching notes yet');
+          const bad = wn.flatMap(c => c.coachingNotes).find(n => !n.text || !n.date);
+          if (bad) return fail('Note missing text or date');
+          return pass(wn.length + ' client(s) have valid notes ✓');
+        }
+      },
+      {
+        name: 'No session audio files stored in localStorage (read-aloud uses Web Speech, no storage)',
+        run() {
+          const custs = safeGet('abco_customers') || [];
+          const withAudio = custs.filter(c => c.sessionAudioData || c.sessionAudioName);
+          if (withAudio.length > 0) return warn(withAudio.length + ' client(s) still have legacy audio data — harmless but can be cleared by re-saving client');
+          return pass('No audio files in localStorage — read-aloud uses Web Speech API ✓');
+        }
+      },
+      {
+        name: 'Coaching notes exist for read-aloud to function on at least one client',
+        run() {
+          const custs = safeGet('abco_customers') || [];
+          const coaching = custs.filter(c => c.clientType === 'coaching' || c.clientType === 'both');
+          if (coaching.length === 0) return warn('No coaching clients yet — add one to test read-aloud');
+          const withNotes = coaching.filter(c => c.coachingNotes && c.coachingNotes.length > 0);
+          if (withNotes.length === 0) return warn('Coaching clients exist but have no notes yet — ▶ Read Notes Aloud requires at least one note');
+          return pass(withNotes.length + ' coaching client(s) have notes — read-aloud ready ✓');
+        }
+      },
+    ]
+  },
+  {
+    id: 'phase5_story',
+    label: '📖 Phase 5 — Story Cards',
+    tests: [
+      {
+        name: 'storyText present on items that have it',
+        run() {
+          const inv = safeGet('abco_inventory') || [];
+          const ws = inv.filter(i => i.storyText && i.storyText.trim());
+          if (inv.length === 0) return warn('No inventory yet');
+          if (ws.length > 0) return pass(ws.length + ' item(s) have story text ✓');
+          return warn('No story text yet—edit an item to add');
+        }
+      },
+      {
+        name: 'storyText within printable length (under 1000 chars)',
+        run() {
+          const inv = safeGet('abco_inventory') || [];
+          const tl = inv.filter(i => i.storyText && i.storyText.length > 1000);
+          if (tl.length > 0) return warn(tl.length + ' item(s) story text over 1000 chars');
+          return pass('All story texts within printable length ✓');
+        }
+      },
+    ]
+  },
+  {
+    id: 'phase5_access',
+    label: '🔐 Phase 5 — Access Toggles',
+    tests: [
+      {
+        name: 'Staff records have access object',
+        run() {
+          const sels = safeGet('abco_seller_pins') || [];
+          if (sels.length === 0) return warn('No staff yet—add in Settings');
+          const wa = sels.filter(s => s.access && typeof s.access === 'object');
+          const leg = sels.length - wa.length;
+          if (leg > 0) return warn(leg + ' legacy seller(s) without access object');
+          return pass('All ' + sels.length + ' staff have access objects ✓');
+        }
+      },
+      {
+        name: 'Coach role: sell and coaching access enabled',
+        run() {
+          const sels = safeGet('abco_seller_pins') || [];
+          const coaches = sels.filter(s => s.role === 'coach' && s.access);
+          if (coaches.length === 0) return warn('No coach staff yet');
+          const bad = coaches.find(c => !c.access.sell || !c.access.coaching);
+          if (bad) return warn('Coach missing sell or coaching access');
+          return pass(coaches.length + ' coach(es) have POS+Coaching ✓');
+        }
+      },
+      {
+        name: 'No admin role in sellers list',
+        run() {
+          const sels = safeGet('abco_seller_pins') || [];
+          const adm = sels.filter(s => s.role === 'admin');
+          if (adm.length > 0) return warn(adm.length + ' seller(s) with admin role');
+          return pass('No admin role in sellers list ✓');
+        }
+      },
+    ]
+  },
+  {
+    id: 'phase5_new_features',
+    label: '📋 Phase 5 — Session Log & Story Settings',
+    tests: [
+      {
+        name: 'Coaching notes have sessionDate field',
+        run() {
+          const custs = safeGet('abco_customers') || [];
+          const allNotes = custs.flatMap(c => c.coachingNotes || []);
+          if (allNotes.length === 0) return warn('No coaching notes yet — add a note to verify sessionDate');
+          const withDate = allNotes.filter(n => n.sessionDate);
+          const legacy = allNotes.length - withDate.length;
+          if (legacy > 0) return warn(legacy + ' legacy note(s) without sessionDate — new notes will have it');
+          return pass('All ' + allNotes.length + ' note(s) have sessionDate ✓');
+        }
+      },
+      {
+        name: 'Story Card label size setting present (storyLabelSizeIdx)',
+        run() {
+          const ss = safeGet('abco_settings') || {};
+          if ('storyLabelSizeIdx' in ss) return pass('storyLabelSizeIdx set to ' + ss.storyLabelSizeIdx + ' ✓');
+          return warn('storyLabelSizeIdx not set yet — open Settings → Label Sizes');
+        }
+      },
+      {
+        name: 'Logo size setting present (storyLogoSizeIdx)',
+        run() {
+          const ss = safeGet('abco_settings') || {};
+          if ('storyLogoSizeIdx' in ss) return pass('storyLogoSizeIdx set to ' + ss.storyLogoSizeIdx + ' ✓');
+          return warn('storyLogoSizeIdx not set yet — open Settings → Label Sizes');
+        }
+      },
+      {
+        name: 'AI description char limit configured (aiDescLimit)',
+        run() {
+          const ss = safeGet('abco_settings') || {};
+          if (ss.aiDescLimit && ss.aiDescLimit >= 100) return pass('aiDescLimit = ' + ss.aiDescLimit + ' chars ✓');
+          return warn('aiDescLimit not yet set — open Settings → AI Photo Analysis');
+        }
+      },
+      {
+        name: 'No story text exceeds its configured AI limit',
+        run() {
+          const ss = safeGet('abco_settings') || {};
+          const limit = ss.aiDescLimit || 420;
+          const inv = safeGet('abco_inventory') || [];
+          const over = inv.filter(i => i.storyText && i.storyText.length > limit);
+          if (over.length > 0) return warn(over.length + ' item(s) story text over limit (' + limit + ' chars) — may truncate on label');
+          return pass('All story texts within configured limit (' + limit + ' chars) ✓');
+        }
+      },
+    ]
+  },
+];
+
+// HELPERS
+// ─────────────────────────────────────────────
+function safeGet(key) {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : null;
+  } catch(e) { return null; }
+}
+function pass(msg) { return { status:'pass', msg }; }
+function fail(msg) { return { status:'fail', msg }; }
+function warn(msg) { return { status:'warn', msg }; }
+function skip(msg) { return { status:'skip', msg }; }
+
+// ─────────────────────────────────────────────
+// RENDER SECTIONS (initial skeleton, status = pending)
+// ─────────────────────────────────────────────
+function renderSections() {
+  const container = document.getElementById('test-container');
+  container.innerHTML = SECTIONS.map(section => `
+    <div class="section" id="section-${section.id}">
+      <div class="section-header">
+        <span>${section.label}</span>
+        <span class="section-score" id="score-${section.id}">${section.tests.length} tests</span>
+      </div>
+      <div class="tests">
+        ${section.tests.map((t, i) => `
+          <div class="test-row" id="row-${section.id}-${i}">
+            <div class="test-badge badge-skip" id="badge-${section.id}-${i}">WAIT</div>
+            <div class="test-content">
+              <div class="test-name">${t.name}</div>
+              <div class="test-detail" id="detail-${section.id}-${i}"></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────
+// RUN ALL TESTS
+// ─────────────────────────────────────────────
+function runAllTests() {
+  let passCount = 0, failCount = 0, warnCount = 0, skipCount = 0;
+  const total = SECTIONS.reduce((s, sec) => s + sec.tests.length, 0);
+  let done = 0;
+
+  SECTIONS.forEach(section => {
+    let sPass = 0, sFail = 0, sWarn = 0, sSkip = 0;
+    section.tests.forEach((t, i) => {
+      let result;
+      try {
+        result = t.run();
+      } catch(e) {
+        result = fail('Test threw an error: ' + e.message);
+      }
+      const badge = document.getElementById(`badge-${section.id}-${i}`);
+      const detail = document.getElementById(`detail-${section.id}-${i}`);
+      const row = document.getElementById(`row-${section.id}-${i}`);
+      if (badge) {
+        badge.className = 'test-badge badge-' + result.status;
+        badge.textContent = result.status === 'pass' ? 'PASS' : result.status === 'fail' ? 'FAIL' : result.status === 'skip' ? 'SKIP' : 'WARN';
+      }
+      if (detail) {
+        detail.className = 'test-detail ' + result.status;
+        detail.textContent = result.msg;
+      }
+      if (result.status === 'pass') { passCount++; sPass++; }
+      else if (result.status === 'fail') { failCount++; sFail++; }
+      else if (result.status === 'skip') { skipCount++; sSkip++; }
+      else { warnCount++; sWarn++; }
+      done++;
+    });
+    const scoreEl = document.getElementById(`score-${section.id}`);
+    if (scoreEl) scoreEl.textContent = `${sPass} pass · ${sFail} fail · ${sWarn} warn · ${sSkip} skip`;
+  });
+
+  document.getElementById('sc-pass').textContent = '✓ ' + passCount;
+  document.getElementById('sc-fail').textContent = '✗ ' + failCount;
+  document.getElementById('sc-skip').textContent = '— ' + (warnCount + skipCount);
+
+  const progressBar = document.getElementById('progress-bar');
+  if (progressBar) progressBar.style.width = '100%';
+
+  const ts = document.getElementById('timestamp');
+  if (ts) ts.textContent = 'Last run: ' + new Date().toLocaleString();
+
+  renderDataStats();
+}
+
+// ─────────────────────────────────────────────
+// DATA SNAPSHOT
+// ─────────────────────────────────────────────
+function renderDataStats() {
+  const keys = ['abco_inventory','abco_queue','abco_customers','abco_trips','abco_seller_pins','abco_discounts','abco_settings','abco_partners'];
+  let html = '';
+  keys.forEach(k => {
+    const v = safeGet(k);
+    let display;
+    if (!v) { display = '<span style="color:var(--text-muted)">—</span>'; }
+    else if (Array.isArray(v)) { display = `${v.length} record${v.length!==1?'s':''}`; }
+    else if (typeof v === 'object') { display = `Object (${Object.keys(v).length} keys)`; }
+    else { display = String(v); }
+    html += `<div class="data-stat"><span>${k.replace('abco_','')}</span><span class="data-val">${display}</span></div>`;
+  });
+  document.getElementById('data-stats').innerHTML = html;
+}
+
+// ─────────────────────────────────────────────
+// TEST DATA INJECTION / CLEAR
+// ─────────────────────────────────────────────
+function injectTestData() {
+  let customers = safeGet('abco_customers') || [];
+  if (!customers.some(c => c._test)) {
+    customers.push({
+      name: 'Test Customer', phone: '555-0100', email: 'test@example.com',
+      clientType: 'both', referralCode: 'ABCO-TEST-100',
+      coachingNotes: [], assignedCoach: '', _test: true
+    });
+    localStorage.setItem('abco_customers', JSON.stringify(customers));
+  }
+
+  let inv = safeGet('abco_inventory') || [];
+  if (!inv.some(i => i._test)) {
+    inv.push({
+      sku: 'TEST-0001', status: 'active', cat: 'Tops', brand: 'TestBrand',
+      shortDesc: 'Test Blouse', longDesc: 'A lovely test blouse for regression purposes.',
+      storyText: '', price: 28, cost: 8, qty: 1, _test: true
+    });
+    localStorage.setItem('abco_inventory', JSON.stringify(inv));
+  }
+
+  let disc = safeGet('abco_discounts') || [];
+  if (!disc.some(d => d._test)) {
+    disc.push({ name: 'Test Coupon 10%', pct: 10, type: 'pct', scope: 'all', _test: true });
+    localStorage.setItem('abco_discounts', JSON.stringify(disc));
+  }
+
+  let partners = safeGet('abco_partners') || [];
+  if (!partners.some(p => p._test)) {
+    partners.push({
+      name: 'Test Partner', profession: 'Therapist', tier: 'Gold',
+      phone: '555-0200', email: 'partner@test.com',
+      referralsSent: 0, referralsReceived: 0,
+      gifts: [], _test: true
+    });
+    localStorage.setItem('abco_partners', JSON.stringify(partners));
+  }
+
+  renderDataStats();
+}
+
+function clearTestData() {
+  ['abco_customers','abco_inventory','abco_discounts','abco_partners','abco_queue','abco_trips','abco_seller_pins'].forEach(key => {
+    let arr = safeGet(key);
+    if (Array.isArray(arr)) {
+      arr = arr.filter(item => !item._test);
+      localStorage.setItem(key, JSON.stringify(arr));
+    }
+  });
+  renderDataStats();
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  renderSections();
+  renderDataStats();
+});
+</script>
+</body>
+</html>
