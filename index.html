@@ -468,6 +468,9 @@ input[type=file] { display: none; }
     <button onclick="logout()" style="background:rgba(255,255,255,0.15);border:none;color:white;font-size:11px;padding:3px 8px;border-radius:12px;cursor:pointer;font-family:Glacial,sans-serif;" id="logout-btn" style="display:none;">Sign Out</button>
   </div>
   </div>
+  <div style="text-align:center;padding:2px 0;background:rgba(0,0,0,0.12);">
+    <span style="font-size:9px;color:rgba(255,255,255,0.65);font-family:monospace;letter-spacing:0.3px;">ABCoApp.Ph5.v21</span>
+  </div>
 
   <!-- Floral banner -->
   <div class="floral-banner"></div>
@@ -859,6 +862,10 @@ input[type=file] { display: none; }
     <div id="tab-settings" class="section">
       <p class="sec-head">Settings</p>
       <p class="sec-sub">Cipher · categories · preferences</p>
+      <div style="background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--text-muted);">App Version</span>
+        <span style="font-size:11px;font-family:monospace;color:var(--forest);font-weight:600;" id="app-version-display"></span>
+      </div>
 
       <div class="card">
         <div class="card-title">AI Photo Analysis</div>
@@ -1328,6 +1335,7 @@ input[type=file] { display: none; }
 
 <script>
 
+const APP_VERSION = 'ABCoApp.Ph5.v21';
 const CIPHER_DEFAULT = {0:'O',1:'I',2:'Z',3:'E',4:'F',5:'S',6:'J',7:'L',8:'B',9:'N'};
 let cipher = {...CIPHER_DEFAULT};
 
@@ -6502,6 +6510,9 @@ window.addEventListener('DOMContentLoaded', () => {
   const today = new Date();
   const dateEl = document.getElementById('f-date');
   if (dateEl) dateEl.value = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
+  // Populate version display in Settings
+  const versionEl = document.getElementById('app-version-display');
+  if (versionEl) versionEl.textContent = APP_VERSION;
 });
 
 </script>
