@@ -4014,13 +4014,14 @@ function printCustomerReport(idx) {
 </div>
 
 <script>window.onload = () => window.print();<\/script>
+  <iframe id="print-frame" style="display:none;position:fixed;left:-9999px;top:-9999px;width:0;height:0;border:none;" title="Print"></iframe>
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(printContent);
-    win.document.close();
+  const _pf3 = document.getElementById('print-frame');
+  if (_pf3) {
+    const _pd3 = _pf3.contentDocument || _pf3.contentWindow.document;
+    _pd3.open(); _pd3.write(printContent); _pd3.close();
   } else {
     toast('Allow popups to print — check Safari settings');
   }
@@ -5407,9 +5408,10 @@ function printReport() {
   const fromVal = document.getElementById('rpt-from')?.value || '';
   const toVal   = document.getElementById('rpt-to')?.value   || '';
   const body = document.getElementById('reports-content')?.innerHTML || '';
-  const win = window.open('', '_blank');
-  if (!win) { toast('Allow popups to print'); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  const _printFr = document.getElementById('print-frame');
+  if (!_printFr) { toast('Print frame missing'); return; }
+  const _pd = _printFr.contentDocument || _printFr.contentWindow.document;
+  _pd.open(); _pd.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>ABCo Report ${fromVal} to ${toVal}</title>
   <style>
     body { font-family:Georgia,serif; color:#2a2a2a; padding:24px 32px; max-width:780px; margin:0 auto; }
@@ -6097,12 +6099,24 @@ function printStoryCardForItem(sku) {
 }
 
 function openPrintWindow(html, toastMsg) {
-  const win = window.open('', '_blank');
-  if (!win) { toast('Allow popups to print labels'); return; }
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
-  toast(toastMsg + ' \u2713');
+  // Use hidden iframe — window.open is blocked in iOS Safari PWA mode
+  const frame = document.getElementById('print-frame');
+  if (!frame) { toast('Print frame missing — reload app'); return; }
+  const fdoc = frame.contentDocument || frame.contentWindow.document;
+  fdoc.open();
+  fdoc.write(html);
+  fdoc.close();
+  const doPrint = () => {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+      toast(toastMsg + ' \u2713');
+    } catch(e) {
+      toast('Print error: ' + e.message);
+    }
+  };
+  if (fdoc.readyState === 'complete') { setTimeout(doPrint, 350); }
+  else { frame.onload = () => setTimeout(doPrint, 350); }
 }
 
 
@@ -6218,12 +6232,13 @@ async function generateLabelPDF(items) {
     .brand{font-size:4.5pt;color:#999;margin-top:0.5mm;}
   </style></head><body>${pages}</body></html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) { toast('Allow popups to print labels'); return; }
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
-  toast(`${totalLabels} label${totalLabels===1?'':'s'} ready to print ✓`);
+  const _skuFr = document.getElementById('print-frame');
+  if (!_skuFr) { toast('Print frame missing — reload app'); return; }
+  const _skuDoc = _skuFr.contentDocument || _skuFr.contentWindow.document;
+  _skuDoc.open(); _skuDoc.write(html); _skuDoc.close();
+  const _skuPrint = () => { try { _skuFr.contentWindow.focus(); _skuFr.contentWindow.print(); toast(`${totalLabels} label${totalLabels===1?'':'s'} ready to print ✓`); } catch(e) { toast('Print error: '+e.message); } };
+  if (_skuDoc.readyState === 'complete') { setTimeout(_skuPrint, 350); }
+  else { _skuFr.onload = () => setTimeout(_skuPrint, 350); }
 }
 
 // ========== PHASE 3: REPORT ENHANCEMENTS — CSV + PDF Export ==========
